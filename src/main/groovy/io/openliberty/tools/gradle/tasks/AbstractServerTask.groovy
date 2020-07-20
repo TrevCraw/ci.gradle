@@ -306,6 +306,15 @@ abstract class AbstractServerTask extends AbstractTask {
             // Set PROJECT_ROOT_NAME so it will be written in config dropin file.
             server.var."${PROJECT_ROOT_NAME}" = project.getProjectDir().getAbsolutePath()
         }
+
+        logger.debug("---------------------------------------------------------------------------");
+        logger.debug("Before generating config file in AbstractServerTask...");
+        logger.debug("server.var: " + server.var.toString());
+        logger.debug("server.defaultVar: " + server.defaultVar.toString());
+        logger.debug("varProjectProps: " + varProjectProps.toString());
+        logger.debug("defaultVarProjectProps: " + defaultVarProjectProps.toString());
+        logger.debug("---------------------------------------------------------------------------");
+
         // generate a config file on the server with any Liberty configuration variables specified via project properties
         if ((server.var != null && !server.var.isEmpty()) || (server.defaultVar != null && !server.defaultVar.isEmpty()) || 
              !varProjectProps.isEmpty() || !defaultVarProjectProps.isEmpty()) {

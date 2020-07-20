@@ -285,6 +285,18 @@ class DevTask extends AbstractServerTask {
         }
 
         @Override
+        public boolean customPropsCheck() {
+            logger.debug("---------------------------------------------------------------------------");
+            logger.debug("customPropsCheck...");
+            logger.debug("server.var: " + server.var.toString());
+            logger.debug("server.defaultVar: " + server.defaultVar.toString());
+            logger.debug("varProjectProps: " + varProjectProps.toString());
+            logger.debug("defaultVarProjectProps: " + defaultVarProjectProps.toString());
+            logger.debug("---------------------------------------------------------------------------");
+            return false;
+        }
+
+        @Override
         public void stopServer() {
             if (container) {
                 // Shouldn't get here, DevUtil should stop the container instead
