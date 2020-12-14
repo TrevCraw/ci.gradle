@@ -837,15 +837,13 @@ class DevTask extends AbstractServerTask {
         // getOutputDir returns a string
         File serverOutputDir = new File(getOutputDir(project));
 
-        if (!container) {
-            if (serverDirectory.exists()) {
-                if (ServerStatusUtil.isServerRunning(serverInstallDir, serverOutputDir, serverName)) {
-                    throw new Exception("The server " + serverName
-                            + " is already running. Terminate all instances of the server before starting dev mode."
-                            + " You can stop a server instance with the command 'gradle libertyStop'.");
-                }
+        if (serverDirectory.exists()) {
+            if (ServerStatusUtil.isServerRunning(serverInstallDir, serverOutputDir, serverName)) {
+                throw new Exception("The server " + serverName
+                        + " is already running locally. Terminate all instances of the server before starting dev mode (regular or container mode)."
+                        + " You can stop a server instance with the command 'gradle libertyStop'.");
             }
-        } // else TODO check if the container is already running?
+        }
 
         if (resourceDirs.isEmpty()) {
             File defaultResourceDir = new File(project.getRootDir() + "/src/main/resources");
