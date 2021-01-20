@@ -10,7 +10,7 @@ apply plugin: "com.gradle.plugin-publish"
 
 archivesBaseName = 'liberty-gradle-plugin'
 group = 'io.openliberty.tools'
-version = '3.2-SNAPSHOT'
+version = '3.1.2-SNAPSHOT'
 
 repositories {
     mavenLocal()
@@ -58,8 +58,8 @@ compileTestGroovy {
     targetCompatibility = JavaVersion.VERSION_1_7
 }
 
-def libertyAntVersion = "1.9.6"
-def libertyCommonVersion = "1.8.10"
+def libertyAntVersion = "1.9.7"
+def libertyCommonVersion = "1.8.12"
 
 dependencies {
     implementation gradleApi()
@@ -67,7 +67,7 @@ dependencies {
     implementation ("io.openliberty.tools:liberty-ant-tasks:$libertyAntVersion")
     implementation ("io.openliberty.tools:ci.common:$libertyCommonVersion")
     implementation group: 'commons-io', name: 'commons-io', version: '2.5'
-    provided group: 'com.ibm.websphere.appserver.api', name: 'com.ibm.websphere.appserver.spi.kernel.embeddable', version: '1.0.0'
+    provided group: 'com.ibm.websphere.appserver.spi', name: 'com.ibm.websphere.appserver.spi.kernel.embeddable', version: '1.0.0'
     testImplementation 'junit:junit:4.11'
     testImplementation gradleTestKit()
 }

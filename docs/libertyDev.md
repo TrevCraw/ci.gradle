@@ -109,23 +109,29 @@ You need to install the Docker runtime locally (Docker Desktop on macOS or Windo
 
 Your project must have a Dockerfile to use dev mode in container mode. A sample Dockerfile is shown in [Building an application image](https://github.com/openliberty/ci.docker/#building-an-application-image). The parent image must be one of the [Open Liberty container images](https://github.com/openliberty/ci.docker/#container-images), or an image using Linux with Open Liberty configured with the same paths as the Open Liberty container images. The Dockerfile must copy the application .war file and the server configuration files that the application requires into the container.
 
-Note: Open Liberty images with the `kernel-slim` tag are not supported with dev mode at this time.
+Dev mode works with a temporary, modified copy of your Dockerfile to allow for hot deployment during development. When dev mode starts up, it pulls the latest version of the parent image defined in the Dockerfile, builds the container image, then runs the container. Note that the context of the `docker build` command used to generate the container image is the directory containing the Dockerfile. When dev mode exits, the container is stopped and deleted, and the logs are preserved in the directory mentioned above.
 
-Dev mode works with a temporary modified copy of your Dockerfile to allow for hot deployment during development. When dev mode starts up, it pulls the latest version of the parent image defined in the Dockerfile, builds the container image, then runs the container. Note that the context of the `docker build` command used to generate the container image is the directory containing the Dockerfile. When dev mode exits, the container is stopped and deleted, and the logs are preserved in the directory mentioned above.
+Hot deployment is made possible because the application is installed as a loose application WAR. This method uses a file type of `.war.xml` which is functionally equivalent to the `.war` file. Dev mode only supports the application under development in the current project so to avoid application conflicts, dev mode removes all Dockerfile commands that copy or add a `.war` file. 
+
+The `.war.xml` file is generated in the `defaultServer/apps` or the `defaultServer/dropins` directory so these directories are mounted in the container. Therefore any files that the Dockerfile may have copied into these directories in the container image will not be accessible.
+
+There are other features of the Dockerfile which are not supported for hot deployment of changes. See the section on [File Tracking](#File-Tracking) for details.
+
+Finally, if dev mode detects the Liberty command `RUN configure.sh` it will insert the environment variable command `ENV OPENJ9_SCC=false` in order to skip the configuration of the [shared class cache](https://github.com/OpenLiberty/ci.docker/#openj9-shared-class-cache-scc).
 
 ### File Tracking
 
 Dev mode offers different levels of file tracking and deployment depending on the way the file is specified in the Dockerfile. 
 1. When you use the COPY command on an individual file, dev mode can track file changes and hot deploy them to the container subject to the limitations below. **This is the recommended way to deploy files for dev mode,** so that you can make changes to those files at any time without needing to rebuild the image or restart the container.
    - E.g. `COPY src/main/liberty/config/server.xml /config/` 
-   - Note that the Dockerfile must copy only one .war file for the application.  Multiple .war files are not supported.
+   - Note that the Dockerfile must copy only one `.war` file for the application. See the section on [Dockerfiles](#Dockerfile) for details.
 2. You can use the COPY command to deploy an entire directory and its sub-directories. In this case, dev mode will detect file changes and automatically rebuild the image and restart the container upon changes.
 3. The ADD command can be used on individual files, including tar files, as well as on directories. Again, dev mode will rebuild the image and restart the container when it detects file changes. 
 4. Certain Dockerfile features are not supported by dev mode. In these cases, the files specified are not tracked. If you change these files, you must rebuild the image and restart the container manually. **Type 'r' and press Enter to rebuild the image and restart the container.**
    - variable substitution used in the COPY or ADD command e.g. `$PROJECT/config`
    - wildcards used in the COPY or ADD command e.g. `src/main/liberty/config/*`
    - paths relative to WORKDIR e.g. `WORKDIR /other/project` followed by `COPY test.txt relativeDir/`
-   - multi-stage builds e.g. `COPY --from=<name>`
+   - files copied from a different part of a multistage Docker build e.g. `COPY --from=<name>`
 
 ### Console Actions
 
@@ -199,6 +205,6 @@ These can also be specified as command line parameters in addition to the ones i
 | container | boolean | 3.1-M1 | If set to `true`, run the server in the container specified by the `dockerfile` parameter. Setting this to `true` and using the `libertyDev` task is equivalent to using the `libertyDevc` task. The default value is `false` when the `libertyDev` task is used, and `true` when the `libertyDevc` task is used. | No |
 | dockerRunOpts | String | 3.1-M1 | Specifies options to add to the `docker run` command when using dev mode to launch your server in a container. For example, `-e key=value` is recognized by `docker run` to define an environment variable with the name `key` and value `value`. | No |
 | dockerfile | File | 3.1-M1 | Location of a Dockerfile to be used by dev mode to build the Docker image for the container that will run your Liberty server.  The directory containing the Dockerfile will also be the context for the `docker build`. The default location is `Dockerfile` in the project root. | No |
-| dockerBuildTimeout | integer | 3.1-M3 | Maximum time to wait (in seconds) for the completion of the Docker operation to build the image. The value must be an integer greater than 0. The default value is `60` seconds. | No |
+| dockerBuildTimeout | integer | 3.1-M3 | Maximum time to wait (in seconds) for the completion of the Docker operation to build the image. The value must be an integer greater than 0. The default value is `600` seconds. | No |
 | skipDefaultPorts | boolean | 3.1-M3 | If set to `true`, dev mode will not publish the default Docker port mappings of `9080:9080` (HTTP) and `9443:9443` (HTTPS). Use this option if you would like to specify alternative local ports to map to the exposed container ports for HTTP and HTTPS using the `dockerRunOpts` parameter. | No |
 | keepTempDockerfile | boolean | 3.1 | If set to `true`, dev mode will not delete the temporary modified copy of your Dockerfile used to build the Docker image. This file is handy in case you need to debug the process of building the Docker image. The path of the temporary Dockerfile can be seen when dev mode displays the `docker build` command. The default value is `false`.| No |

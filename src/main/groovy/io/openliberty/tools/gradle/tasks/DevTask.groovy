@@ -254,13 +254,13 @@ class DevTask extends AbstractServerTask {
                     boolean  hotTests, boolean  skipTests, String artifactId, int serverStartTimeout,
                     int verifyAppStartTimeout, int appUpdateTimeout, double compileWait,
                     boolean libertyDebug, boolean pollingTest, boolean container, File dockerfile,
-                    String dockerRunOpts, int dockerBuildTimeout, boolean skipDefaultPorts, boolean keepTempDockerfile
+                    String dockerRunOpts, int dockerBuildTimeout, boolean skipDefaultPorts, boolean keepTempDockerfile, String mavenCacheLocation
         ) throws IOException {
             super(serverDirectory, sourceDirectory, testSourceDirectory, configDirectory, projectDirectory,
                     resourceDirs, hotTests, skipTests, false /* skipUTs */, false /* skipITs */, artifactId,  serverStartTimeout,
                     verifyAppStartTimeout, appUpdateTimeout, ((long) (compileWait * 1000L)), libertyDebug,
                     true /* useBuildRecompile */, true /* gradle */, pollingTest, container, dockerfile, dockerRunOpts, dockerBuildTimeout, skipDefaultPorts,
-                    null /* compileOptions not needed since useBuildRecompile is true */, keepTempDockerfile
+                    null /* compileOptions not needed since useBuildRecompile is true */, keepTempDockerfile, mavenCacheLocation
                 );
 
             ServerFeature servUtil = getServerFeatureUtil();
@@ -326,6 +326,8 @@ class DevTask extends AbstractServerTask {
 
         @Override
         public void stopServer() {
+            super.serverFullyStarted.set(false);
+
             if (container) {
                 // Shouldn't get here, DevUtil should stop the container instead
                 logger.debug('DevUtil called stopServer when the server should be running in a container.')
@@ -597,7 +599,12 @@ class DevTask extends AbstractServerTask {
                 gradleBuildLauncher.withArguments("--exclude-task", "libertyCreate");
 
                 try {
-                    runInstallFeatureTask(gradleBuildLauncher, "--serverDir=${serverDir.getAbsolutePath()}");
+                    List<String> options = new ArrayList<String>();
+                    options.add("--serverDir=${serverDir.getAbsolutePath()}");
+                    if (container) {
+                        options.add("--containerName=${super.getContainerName()}");
+                    }
+                    runInstallFeatureTask(gradleBuildLauncher, options);
                     this.existingFeatures.addAll(features);
                 } catch (BuildException e) {
                     // stdout/stderr from the installFeature task is sent to the terminal
@@ -699,17 +706,19 @@ class DevTask extends AbstractServerTask {
 
         @Override
         public void libertyInstallFeature() {
-            if (!container) { // Container should have features required, container mode does not support installing features
-                ProjectConnection gradleConnection = initGradleProjectConnection();
-                BuildLauncher gradleBuildLauncher = gradleConnection.newBuild();
+            ProjectConnection gradleConnection = initGradleProjectConnection();
+            BuildLauncher gradleBuildLauncher = gradleConnection.newBuild();
 
-                try {
-                    runInstallFeatureTask(gradleBuildLauncher);
-                } catch (BuildException e) {
-                    throw new PluginExecutionException(e);
-                } finally {
-                    gradleConnection.close();
+            try {
+                List<String> options = new ArrayList<String>();
+                if (container) {
+                    options.add("--containerName=${super.getContainerName()}");
                 }
+                runInstallFeatureTask(gradleBuildLauncher, options);
+            } catch (BuildException e) {
+                throw new PluginExecutionException(e);
+            } finally {
+                gradleConnection.close();
             }
         }
 
@@ -720,6 +729,9 @@ class DevTask extends AbstractServerTask {
             try {
                 if (container) {
                     gradleBuildLauncher.addArguments(CONTAINER_PROPERTY_ARG)
+                    // Skip installFeature since it is not needed here in container mode.
+                    // Container mode should call installFeature separately with the containerName parameter where needed.
+                    gradleBuildLauncher.addArguments("--exclude-task", "installFeature");
                 }
                 runGradleTask(gradleBuildLauncher, 'deploy');
             } catch (BuildException e) {
@@ -756,13 +768,16 @@ class DevTask extends AbstractServerTask {
         }
     }
 
-    public void runInstallFeatureTask(BuildLauncher gradleBuildLauncher, String... options) throws BuildException {
-        if (!container) {
-            ArrayList tasks = new ArrayList(options.length + 1);
-            tasks.add('installFeature');
-            tasks.addAll(options);
-            runGradleTask(gradleBuildLauncher, tasks.toArray(new String[tasks.size()]));
+    public void runInstallFeatureTask(BuildLauncher gradleBuildLauncher, List<String> options) throws BuildException {
+        String[] tasks = new String[options != null ? options.size() + 1 : 1];
+        tasks[0] = 'installFeature';
+        if (options != null) {
+            for(int i = 0; i < options.size(); i++) {
+                tasks[i+1] = options.get(i);
+            }
         }
+
+        runGradleTask(gradleBuildLauncher, tasks);
     }
 
     // If a argument has not been set using CLI arguments set a default value
@@ -877,11 +892,11 @@ class DevTask extends AbstractServerTask {
                 runGradleTask(gradleBuildLauncher, 'libertyCreate');
                 // suppress extra install feature warnings (one would have shown up already from the libertyCreate task on the line above)
                 gradleBuildLauncher.addArguments("-D" + DevUtil.SKIP_BETA_INSTALL_WARNING + "=" + Boolean.TRUE.toString());
-                runInstallFeatureTask(gradleBuildLauncher);
+                runInstallFeatureTask(gradleBuildLauncher, null);
             } else {
                 // skip creating the server and installing features and just propagate the option to 'deploy'
                 createServerDirectories();
-                gradleBuildLauncher.addArguments("--exclude-task", "installFeature");
+                gradleBuildLauncher.addArguments("--exclude-task", "installFeature"); // skip installing features at startup since Dockerfile should have RUN features.sh
                 gradleBuildLauncher.addArguments(CONTAINER_PROPERTY_ARG);
             }
             runGradleTask(gradleBuildLauncher, 'deploy');
@@ -889,12 +904,14 @@ class DevTask extends AbstractServerTask {
             gradleConnection.close();
         }
 
+        String localMavenRepoForFeatureUtility = new File(new File(System.getProperty("user.home"), ".m2"), "repository");
+
         util = new DevTaskUtil(serverInstallDir, getUserDir(project, serverInstallDir),
                 serverDirectory, sourceDirectory, testSourceDirectory, configDirectory, project.getRootDir(),
                 resourceDirs, hotTests.booleanValue(), skipTests.booleanValue(), artifactId, serverStartTimeout.intValue(),
                 verifyAppStartTimeout.intValue(), verifyAppStartTimeout.intValue(), compileWait.doubleValue(), 
                 libertyDebug.booleanValue(), pollingTest.booleanValue(), container.booleanValue(), dockerfile, dockerRunOpts, 
-                dockerBuildTimeout, skipDefaultPorts.booleanValue(), keepTempDockerfile.booleanValue()
+                dockerBuildTimeout, skipDefaultPorts.booleanValue(), keepTempDockerfile.booleanValue(), localMavenRepoForFeatureUtility
         );
 
         util.addShutdownHook(executor);
@@ -1051,6 +1068,11 @@ class DevTask extends AbstractServerTask {
         @Override
         public void info(String msg) {
             logger.info(msg);
+        }
+
+        @Override
+        public void error(String msg, Throwable e) {
+            logger.error(msg, e);
         }
 
     }
